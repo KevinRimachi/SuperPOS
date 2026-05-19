@@ -1,0 +1,49 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Movimiento {
+  id                     String        @id @default(uuid())
+  fecha                  DateTime      @default(now())
+  categoria              String
+  tipo                   String
+  monto_total            Float
+  ingreso_efectivo       Float         @default(0)
+  ingreso_yape           Float         @default(0)
+  salida_vuelto_efectivo Float         @default(0)
+  salida_vuelto_yape     Float         @default(0)
+  id_cierre_diario       String?
+  cierre                 CierreDiario? @relation(fields: [id_cierre_diario], references: [id])
+}
+
+model TareaJefe {
+  id              String   @id @default(uuid())
+  descripcion     String
+  fecha_solicitud DateTime @default(now())
+  precio_final    Float?
+  estado          String   @default("Pendiente") // Pendiente, Completado
+}
+
+model CierreDiario {
+  id                       String       @id @default(uuid())
+  fecha                    DateTime     @default(now())
+  saldo_efectivo_entregado Float        @default(0)
+  saldo_yape_entregado     Float        @default(0)
+  estado                   String       @default("Abierto") // Abierto, Entregado
+  movimientos              Movimiento[]
+}
+
+model LiquidacionMensual {
+  id                  String @id @default(uuid())
+  mes_anio            String
+  ingreso_bruto_total Float  @default(0)
+  pago_operador       Float  @default(0)
+  estado_pago         String @default("Pendiente") // Pendiente, Pagado
+}
