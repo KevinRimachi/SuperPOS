@@ -71,11 +71,33 @@ export async function getEstadoCaja() {
   });
 
   if (cajasPendientes.length > 0) {
+    // Group boxes by unique UTC date (e.g. "2026-05-19") to consolidate duplicates
+    const groups: { [key: string]: { dateStr: string; ids: string[]; items: typeof cajasPendientes } } = {};
+
+    for (const caja of cajasPendientes) {
+      const dateStr = caja.fecha.toISOString().split("T")[0];
+      if (!groups[dateStr]) {
+        groups[dateStr] = {
+          dateStr,
+          ids: [],
+          items: [],
+        };
+      }
+      groups[dateStr].ids.push(caja.id);
+      groups[dateStr].items.push(caja);
+    }
+
     const cajasProcesadas = await Promise.all(
-      cajasPendientes.map(async (caja) => {
+      Object.keys(groups).map(async (dateStr) => {
+        const group = groups[dateStr];
+        const ids = group.ids;
+
+        // Fetch movements of all boxes belonging to this date group
         const movimientos = await prisma.movimiento.findMany({
           where: {
-            id_cierre_diario: caja.id,
+            id_cierre_diario: {
+              in: ids,
+            },
           },
           orderBy: {
             fecha: "desc",
@@ -95,8 +117,14 @@ export async function getEstadoCaja() {
           }
         });
 
+        const firstCaja = group.items[0];
+
         return {
-          cierre: caja,
+          cierre: {
+            ...firstCaja,
+            id: ids.join(","), // pass comma-separated list of IDs to front-end
+            fecha: firstCaja.fecha,
+          },
           resumenActual: {
             esperadoEfectivo: Math.max(0, totalEfectivo),
             esperadoYape: Math.max(0, totalYape),
@@ -107,6 +135,9 @@ export async function getEstadoCaja() {
         };
       })
     );
+
+    // Sort ascending so oldest date comes first
+    cajasProcesadas.sort((a, b) => new Date(a.cierre.fecha).getTime() - new Date(b.cierre.fecha).getTime());
 
     const oldestPending = cajasProcesadas[0];
 
@@ -264,40 +295,50 @@ export async function cerrarCajaDiaria(data: {
   saldo_yape_entregado: number;
   id_cierre?: string;
 }) {
-  let targetCierreId = data.id_cierre;
+  let targetCierreIds: string[] = [];
   
-  if (!targetCierreId) {
+  if (data.id_cierre) {
+    targetCierreIds = data.id_cierre.split(",");
+  } else {
     const { cierre } = await getEstadoCaja();
-    targetCierreId = cierre.id;
+    targetCierreIds = cierre.id.split(",");
   }
 
-  // Get the closure record to check its current state
-  const currentCierre = await prisma.cierreDiario.findUnique({
-    where: { id: targetCierreId }
+  // Get the closure records to check their current state
+  const currentCierres = await prisma.cierreDiario.findMany({
+    where: { id: { in: targetCierreIds } }
   });
 
-  if (!currentCierre) {
-    throw new Error("No se encontró la caja especificada.");
+  if (currentCierres.length === 0) {
+    throw new Error("No se encontraron las cajas especificadas.");
   }
 
-  if (currentCierre.estado === "Entregado") {
-    throw new Error("La caja ya está cerrada.");
+  const allClosed = currentCierres.every(c => c.estado === "Entregado");
+  if (allClosed) {
+    throw new Error("Las cajas seleccionadas ya están cerradas.");
   }
 
-  const cierreActualizado = await prisma.cierreDiario.update({
-    where: {
-      id: targetCierreId,
-    },
-    data: {
-      estado: "Entregado",
-      saldo_efectivo_entregado: data.saldo_efectivo_entregado,
-      saldo_yape_entregado: data.saldo_yape_entregado,
-      fecha: new Date(), // finalize closing timestamp
-    },
-  });
+  // Update all target closures to "Entregado"
+  const updates = await Promise.all(
+    targetCierreIds.map(async (id, index) => {
+      // Allocate the balances to the first box, and 0 to duplicates
+      const targetEfectivo = index === 0 ? data.saldo_efectivo_entregado : 0;
+      const targetYape = index === 0 ? data.saldo_yape_entregado : 0;
+
+      return prisma.cierreDiario.update({
+        where: { id },
+        data: {
+          estado: "Entregado",
+          saldo_efectivo_entregado: targetEfectivo,
+          saldo_yape_entregado: targetYape,
+          fecha: new Date(), // finalize closing timestamp
+        },
+      });
+    })
+  );
 
   revalidatePath("/");
-  return cierreActualizado;
+  return updates[0];
 }
 
 export async function abrirNuevaCaja() {

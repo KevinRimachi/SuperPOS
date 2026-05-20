@@ -186,10 +186,12 @@ export function formatCurrency(value: number): string {
 export function formatLocalDate(date: Date | string): string {
   const dateObj = typeof date === "string" ? new Date(date) : date;
   return dateObj.toLocaleDateString("es-PE", {
+    timeZone: "UTC",
     year: "numeric",
     month: "long",
     day: "numeric"
   }) + " • " + dateObj.toLocaleTimeString("es-PE", {
+    timeZone: "UTC",
     hour: "2-digit",
     minute: "2-digit"
   });
@@ -3270,9 +3272,9 @@ export default function DashboardClient({
                   onChange={(e) => setSelectedPendingId(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-850 focus:border-amber-500 rounded-lg py-2 px-3 text-slate-200 text-xs font-bold focus:outline-none"
                 >
-                  {cajaState.cajasPendientes.map((cp: any, index: number) => (
+                  {cajaState.cajasPendientes.map((cp: any) => (
                     <option key={cp.cierre.id} value={cp.cierre.id}>
-                      Caja #{index + 1}: {formatLocalDate(cp.cierre.fecha)} ({cp.resumenActual.count} movs)
+                      Fecha: {formatLocalDate(cp.cierre.fecha).split(" • ")[0]} ({cp.resumenActual.count} movs)
                     </option>
                   ))}
                 </select>
@@ -3314,7 +3316,7 @@ export default function DashboardClient({
                       <div key={m.id} className="flex justify-between items-center bg-slate-900/40 p-2 rounded-lg border border-slate-850 text-[11px]">
                         <div className="text-left">
                           <p className="font-bold text-slate-300 truncate max-w-[180px]">{m.categoria}</p>
-                          <p className="text-[9px] text-slate-550 font-semibold">{new Date(m.fecha).toLocaleTimeString("es-PE", { hour: '2-digit', minute: '2-digit' })}</p>
+                          <p className="text-[9px] text-slate-550 font-semibold">{new Date(m.fecha).toLocaleTimeString("es-PE", { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' })}</p>
                         </div>
                         <div className="text-right">
                           <span className={`font-extrabold ${m.tipo === "Ingreso" ? "text-emerald-400" : "text-rose-450"}`}>
