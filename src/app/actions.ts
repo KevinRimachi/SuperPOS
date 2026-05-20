@@ -71,41 +71,51 @@ export async function getEstadoCaja() {
   });
 
   if (cajasPendientes.length > 0) {
-    const cajaPendiente = cajasPendientes[0];
+    const cajasProcesadas = await Promise.all(
+      cajasPendientes.map(async (caja) => {
+        const movimientos = await prisma.movimiento.findMany({
+          where: {
+            id_cierre_diario: caja.id,
+          },
+          orderBy: {
+            fecha: "desc",
+          },
+        });
 
-    // Calculate expected totals for this pending box
-    const movimientos = await prisma.movimiento.findMany({
-      where: {
-        id_cierre_diario: cajaPendiente.id,
-      },
-      orderBy: {
-        fecha: "desc",
-      },
-    });
+        let totalEfectivo = 0;
+        let totalYape = 0;
 
-    let totalEfectivo = 0;
-    let totalYape = 0;
+        movimientos.forEach((m: any) => {
+          if (m.tipo === "Ingreso") {
+            totalEfectivo += m.ingreso_efectivo - m.salida_vuelto_efectivo;
+            totalYape += m.ingreso_yape - m.salida_vuelto_yape;
+          } else if (m.tipo === "Egreso") {
+            totalEfectivo -= m.ingreso_efectivo;
+            totalYape -= m.ingreso_yape;
+          }
+        });
 
-    movimientos.forEach((m: any) => {
-      if (m.tipo === "Ingreso") {
-        totalEfectivo += m.ingreso_efectivo - m.salida_vuelto_efectivo;
-        totalYape += m.ingreso_yape - m.salida_vuelto_yape;
-      } else if (m.tipo === "Egreso") {
-        totalEfectivo -= m.ingreso_efectivo;
-        totalYape -= m.ingreso_yape;
-      }
-    });
+        return {
+          cierre: caja,
+          resumenActual: {
+            esperadoEfectivo: Math.max(0, totalEfectivo),
+            esperadoYape: Math.max(0, totalYape),
+            totalEsperado: Math.max(0, totalEfectivo) + Math.max(0, totalYape),
+            count: movimientos.length,
+          },
+          movimientos,
+        };
+      })
+    );
+
+    const oldestPending = cajasProcesadas[0];
 
     return {
-      cierre: cajaPendiente,
-      resumenActual: {
-        esperadoEfectivo: Math.max(0, totalEfectivo),
-        esperadoYape: Math.max(0, totalYape),
-        totalEsperado: Math.max(0, totalEfectivo) + Math.max(0, totalYape),
-        count: movimientos.length,
-      },
+      cierre: oldestPending.cierre,
+      resumenActual: oldestPending.resumenActual,
       hayCajaPendiente: true,
-      movimientosCajaPendiente: movimientos,
+      movimientosCajaPendiente: oldestPending.movimientos,
+      cajasPendientes: cajasProcesadas,
     };
   }
 
@@ -145,6 +155,7 @@ export async function getEstadoCaja() {
     },
     hayCajaPendiente: false,
     movimientosCajaPendiente: [],
+    cajasPendientes: [],
   };
 }
 
@@ -251,16 +262,31 @@ export async function getMovimientosFiltrados(rango: "hoy" | "semana" | "mes") {
 export async function cerrarCajaDiaria(data: {
   saldo_efectivo_entregado: number;
   saldo_yape_entregado: number;
+  id_cierre?: string;
 }) {
-  const { cierre } = await getEstadoCaja();
+  let targetCierreId = data.id_cierre;
+  
+  if (!targetCierreId) {
+    const { cierre } = await getEstadoCaja();
+    targetCierreId = cierre.id;
+  }
 
-  if (cierre.estado === "Entregado") {
-    throw new Error("La caja de hoy ya está cerrada.");
+  // Get the closure record to check its current state
+  const currentCierre = await prisma.cierreDiario.findUnique({
+    where: { id: targetCierreId }
+  });
+
+  if (!currentCierre) {
+    throw new Error("No se encontró la caja especificada.");
+  }
+
+  if (currentCierre.estado === "Entregado") {
+    throw new Error("La caja ya está cerrada.");
   }
 
   const cierreActualizado = await prisma.cierreDiario.update({
     where: {
-      id: cierre.id,
+      id: targetCierreId,
     },
     data: {
       estado: "Entregado",

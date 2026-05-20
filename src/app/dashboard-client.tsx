@@ -659,6 +659,24 @@ export default function DashboardClient({
   const [showCashBreakdown, setShowCashBreakdown] = useState<boolean>(false);
   const [cashCount, setCashCount] = useState<Record<string, string>>({});
 
+  // Multiple Pending Cajas selector state
+  const [selectedPendingId, setSelectedPendingId] = useState<string>("");
+
+  useEffect(() => {
+    if (cajaState.hayCajaPendiente && cajaState.cajasPendientes?.length > 0) {
+      const exists = cajaState.cajasPendientes.some((cp: any) => cp.cierre.id === selectedPendingId);
+      if (!exists) {
+        setSelectedPendingId(cajaState.cajasPendientes[0].cierre.id);
+      }
+    } else {
+      setSelectedPendingId("");
+    }
+  }, [cajaState, selectedPendingId]);
+
+  const activePendingCaja = (cajaState.hayCajaPendiente && cajaState.cajasPendientes?.length > 0)
+    ? (cajaState.cajasPendientes.find((cp: any) => cp.cierre.id === selectedPendingId) || cajaState.cajasPendientes[0])
+    : null;
+
   const updateCashCount = (den: number, val: string) => {
     setCashCount(prev => ({
       ...prev,
@@ -686,9 +704,12 @@ export default function DashboardClient({
   const [prevExpectedYape, setPrevExpectedYape] = useState<number>(0);
 
   useEffect(() => {
-    if (cajaState.cierre.estado === "Abierto") {
-      const currentEspCash = cajaState.resumenActual.esperadoEfectivo;
-      const currentEspYape = cajaState.resumenActual.esperadoYape;
+    const targetCierre = activePendingCaja ? activePendingCaja.cierre : cajaState.cierre;
+    const targetResumen = activePendingCaja ? activePendingCaja.resumenActual : cajaState.resumenActual;
+
+    if (targetCierre.estado === "Abierto") {
+      const currentEspCash = targetResumen.esperadoEfectivo;
+      const currentEspYape = targetResumen.esperadoYape;
       
       const numCash = parseFloat(deliveredCash);
       const numYape = parseFloat(deliveredYape);
@@ -715,7 +736,16 @@ export default function DashboardClient({
       setDeliveredCash("");
       setDeliveredYape("");
     }
-  }, [cajaState.resumenActual.esperadoEfectivo, cajaState.resumenActual.esperadoYape, cajaState.cierre.estado]);
+  }, [
+    cajaState.resumenActual.esperadoEfectivo,
+    cajaState.resumenActual.esperadoYape,
+    cajaState.cierre.estado,
+    activePendingCaja,
+    deliveredCash,
+    deliveredYape,
+    prevExpectedEfectivo,
+    prevExpectedYape
+  ]);
 
   const handleEgresoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -787,7 +817,8 @@ export default function DashboardClient({
       try {
         await cerrarCajaDiaria({
           saldo_efectivo_entregado: dCash,
-          saldo_yape_entregado: dYape
+          saldo_yape_entregado: dYape,
+          id_cierre: activePendingCaja ? activePendingCaja.cierre.id : undefined
         });
         showNotification("success", "Caja cerrada y entregada con éxito. Turno bloqueado.");
         setDeliveredCash("");
@@ -3214,7 +3245,7 @@ export default function DashboardClient({
          ---------------------------------------------------- */}
       {!isLocked && cajaState.hayCajaPendiente && (
         <div className="fixed inset-0 z-[90] bg-slate-950/80 backdrop-blur-md flex justify-center items-center p-4">
-          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative space-y-6 animate-in fade-in zoom-in-95 duration-200">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative space-y-5 animate-in fade-in zoom-in-95 duration-200">
             {/* Modal header */}
             <div className="text-center space-y-2">
               <div className="inline-flex h-12 w-12 bg-amber-500/10 text-amber-450 rounded-xl items-center justify-center mb-2 animate-pulse">
@@ -3224,9 +3255,29 @@ export default function DashboardClient({
                 Cierre Retroactivo Obligatorio
               </h2>
               <p className="text-xs text-slate-400 leading-relaxed font-semibold">
-                La caja del día <strong className="text-slate-205">{formatLocalDate(cajaState.cierre.fecha)}</strong> no se cerró. Para registrar nuevas ventas hoy, primero debes realizar el arqueo y cierre diario de este turno anterior.
+                La caja del día <strong className="text-slate-205">{formatLocalDate(activePendingCaja?.cierre.fecha || cajaState.cierre.fecha)}</strong> no se cerró. Para registrar nuevas ventas hoy, primero debes realizar el arqueo y cierre diario de este turno anterior.
               </p>
             </div>
+
+            {/* Selector de Cajas Pendientes (en caso haya múltiples) */}
+            {cajaState.cajasPendientes && cajaState.cajasPendientes.length > 1 && (
+              <div className="space-y-1.5 bg-amber-500/5 p-3 rounded-xl border border-amber-500/10">
+                <label className="block text-[9px] font-black text-amber-500 uppercase tracking-wider">
+                  ⚠️ Hay múltiples cajas anteriores abiertas. Selecciona cuál cerrar:
+                </label>
+                <select
+                  value={selectedPendingId}
+                  onChange={(e) => setSelectedPendingId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-850 focus:border-amber-500 rounded-lg py-2 px-3 text-slate-200 text-xs font-bold focus:outline-none"
+                >
+                  {cajaState.cajasPendientes.map((cp: any, index: number) => (
+                    <option key={cp.cierre.id} value={cp.cierre.id}>
+                      Caja #{index + 1}: {formatLocalDate(cp.cierre.fecha)} ({cp.resumenActual.count} movs)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Resumen e Ingresos/Movimientos */}
             <div className="bg-slate-950 p-4 rounded-xl border border-slate-850 space-y-4">
@@ -3235,29 +3286,35 @@ export default function DashboardClient({
                 <div className="grid grid-cols-2 gap-4 text-center">
                   <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800">
                     <p className="text-[9px] text-slate-550 font-bold uppercase">Efectivo Esperado</p>
-                    <p className="text-base font-black text-slate-200">{formatCurrency(cajaState.resumenActual.esperadoEfectivo)}</p>
+                    <p className="text-base font-black text-slate-200">
+                      {formatCurrency(activePendingCaja ? activePendingCaja.resumenActual.esperadoEfectivo : cajaState.resumenActual.esperadoEfectivo)}
+                    </p>
                   </div>
                   <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800">
                     <p className="text-[9px] text-slate-550 font-bold uppercase">Yape Esperado</p>
-                    <p className="text-base font-black text-slate-200">{formatCurrency(cajaState.resumenActual.esperadoYape)}</p>
+                    <p className="text-base font-black text-slate-200">
+                      {formatCurrency(activePendingCaja ? activePendingCaja.resumenActual.esperadoYape : cajaState.resumenActual.esperadoYape)}
+                    </p>
                   </div>
                 </div>
                 <div className="text-center pt-2 border-t border-slate-900 flex justify-between items-center px-2">
                   <span className="text-[9px] text-slate-500 font-bold uppercase">Total Esperado en Caja:</span>
-                  <span className="text-xs font-black text-purple-400">{formatCurrency(cajaState.resumenActual.totalEsperado)}</span>
+                  <span className="text-xs font-black text-purple-400">
+                    {formatCurrency(activePendingCaja ? activePendingCaja.resumenActual.totalEsperado : cajaState.resumenActual.totalEsperado)}
+                  </span>
                 </div>
               </div>
 
               {/* List of movements in the pending box */}
               <div className="border-t border-slate-900 pt-3 space-y-2">
                 <span className="text-[10px] text-slate-500 uppercase font-black block text-center">Ingresos y Egresos del Turno</span>
-                {cajaState.movimientosCajaPendiente && cajaState.movimientosCajaPendiente.length > 0 ? (
+                {(activePendingCaja ? activePendingCaja.movimientos : cajaState.movimientosCajaPendiente) && (activePendingCaja ? activePendingCaja.movimientos : cajaState.movimientosCajaPendiente).length > 0 ? (
                   <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1.5 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
-                    {cajaState.movimientosCajaPendiente.map((m: any) => (
+                    {(activePendingCaja ? activePendingCaja.movimientos : cajaState.movimientosCajaPendiente).map((m: any) => (
                       <div key={m.id} className="flex justify-between items-center bg-slate-900/40 p-2 rounded-lg border border-slate-850 text-[11px]">
                         <div className="text-left">
                           <p className="font-bold text-slate-300 truncate max-w-[180px]">{m.categoria}</p>
-                          <p className="text-[9px] text-slate-500 font-semibold">{new Date(m.fecha).toLocaleTimeString("es-PE", { hour: '2-digit', minute: '2-digit' })}</p>
+                          <p className="text-[9px] text-slate-550 font-semibold">{new Date(m.fecha).toLocaleTimeString("es-PE", { hour: '2-digit', minute: '2-digit' })}</p>
                         </div>
                         <div className="text-right">
                           <span className={`font-extrabold ${m.tipo === "Ingreso" ? "text-emerald-400" : "text-rose-450"}`}>
