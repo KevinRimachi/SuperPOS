@@ -54,12 +54,71 @@ async function getOrCreateTodayCierre() {
 
 // 1. Get POS and cash drawer state
 export async function getEstadoCaja() {
+  const todayStr = getLocalDateString();
+  const startOfToday = new Date(new Date(`${todayStr}T00:00:00.000Z`).getTime() + 5 * 3600000);
+
+  // Search for any previous unclosed closures (Cajas Huérfanas)
+  const cajasPendientes = await prisma.cierreDiario.findMany({
+    where: {
+      estado: "Abierto",
+      fecha: {
+        lt: startOfToday,
+      },
+    },
+    orderBy: {
+      fecha: "asc",
+    },
+  });
+
+  if (cajasPendientes.length > 0) {
+    const cajaPendiente = cajasPendientes[0];
+
+    // Calculate expected totals for this pending box
+    const movimientos = await prisma.movimiento.findMany({
+      where: {
+        id_cierre_diario: cajaPendiente.id,
+      },
+      orderBy: {
+        fecha: "desc",
+      },
+    });
+
+    let totalEfectivo = 0;
+    let totalYape = 0;
+
+    movimientos.forEach((m: any) => {
+      if (m.tipo === "Ingreso") {
+        totalEfectivo += m.ingreso_efectivo - m.salida_vuelto_efectivo;
+        totalYape += m.ingreso_yape - m.salida_vuelto_yape;
+      } else if (m.tipo === "Egreso") {
+        totalEfectivo -= m.ingreso_efectivo;
+        totalYape -= m.ingreso_yape;
+      }
+    });
+
+    return {
+      cierre: cajaPendiente,
+      resumenActual: {
+        esperadoEfectivo: Math.max(0, totalEfectivo),
+        esperadoYape: Math.max(0, totalYape),
+        totalEsperado: Math.max(0, totalEfectivo) + Math.max(0, totalYape),
+        count: movimientos.length,
+      },
+      hayCajaPendiente: true,
+      movimientosCajaPendiente: movimientos,
+    };
+  }
+
+  // Otherwise, fallback to the today's cash register logic
   const cierre = await getOrCreateTodayCierre();
   
   // Calculate current active expected totals
   const movimientos = await prisma.movimiento.findMany({
     where: {
       id_cierre_diario: cierre.id,
+    },
+    orderBy: {
+      fecha: "desc",
     },
   });
 
@@ -84,6 +143,8 @@ export async function getEstadoCaja() {
       totalEsperado: Math.max(0, totalEfectivo) + Math.max(0, totalYape),
       count: movimientos.length,
     },
+    hayCajaPendiente: false,
+    movimientosCajaPendiente: [],
   };
 }
 
@@ -97,7 +158,11 @@ export async function registrarMovimiento(data: {
   salida_vuelto_efectivo: number;
   salida_vuelto_yape: number;
 }) {
-  const { cierre } = await getEstadoCaja();
+  const { cierre, hayCajaPendiente } = await getEstadoCaja();
+
+  if (hayCajaPendiente) {
+    throw new Error("No se pueden registrar movimientos mientras exista una caja de un día anterior pendiente de cierre.");
+  }
 
   if (cierre.estado === "Entregado") {
     throw new Error("La caja de hoy ya está cerrada y entregada. No se pueden registrar más movimientos.");
