@@ -348,7 +348,6 @@ export async function cerrarCajaDiaria(data: {
           estado: "Entregado",
           saldo_efectivo_entregado: targetEfectivo,
           saldo_yape_entregado: targetYape,
-          fecha: new Date(), // finalize closing timestamp
         },
       });
     })
