@@ -25,8 +25,8 @@ async function getOrCreateTodayCierre() {
   const startOfDay = new Date(new Date(`${todayStr}T00:00:00.000Z`).getTime() + 5 * 3600000);
   const endOfDay = new Date(startOfDay.getTime() + 24 * 3600000 - 1);
 
-  // Look for the latest closure record for today
-  let cierre = await prisma.cierreDiario.findFirst({
+  // Look for closure records for today
+  const cierres = await prisma.cierreDiario.findMany({
     where: {
       fecha: {
         gte: startOfDay,
@@ -34,22 +34,39 @@ async function getOrCreateTodayCierre() {
       },
     },
     orderBy: {
-      fecha: "desc",
+      fecha: "asc", // oldest first
     },
   });
 
-  if (!cierre) {
-    cierre = await prisma.cierreDiario.create({
-      data: {
-        fecha: new Date(),
-        estado: "Abierto",
-        saldo_efectivo_entregado: 0,
-        saldo_yape_entregado: 0,
-      },
-    });
+  if (cierres.length > 0) {
+    const mainCierre = cierres[0];
+    
+    // Deduplication sweep: if there are duplicate boxes created today, clean them up
+    if (cierres.length > 1) {
+      for (let i = 1; i < cierres.length; i++) {
+        // Move any accidentally assigned movements to the main closure before deleting
+        await prisma.movimiento.updateMany({
+          where: { id_cierre_diario: cierres[i].id },
+          data: { id_cierre_diario: mainCierre.id },
+        });
+        await prisma.cierreDiario.delete({
+          where: { id: cierres[i].id }
+        });
+      }
+    }
+    
+    return mainCierre;
   }
 
-  return cierre;
+  // Create new if none exists
+  return prisma.cierreDiario.create({
+    data: {
+      fecha: new Date(),
+      estado: "Abierto",
+      saldo_efectivo_entregado: 0,
+      saldo_yape_entregado: 0,
+    },
+  });
 }
 
 // 1. Get POS and cash drawer state
@@ -699,7 +716,7 @@ export async function importarBaseDatos(data: any): Promise<{ success: boolean; 
 }
 
 export async function getHistorialCierres() {
-  return prisma.cierreDiario.findMany({
+  const cierres = await prisma.cierreDiario.findMany({
     where: {
       estado: "Entregado"
     },
@@ -710,4 +727,26 @@ export async function getHistorialCierres() {
       fecha: "desc"
     }
   });
+
+  // Group by UTC date string to eliminate duplicates in the frontend view
+  const groups: { [key: string]: any } = {};
+  for (const c of cierres) {
+    const dateStr = c.fecha.toISOString().split("T")[0];
+    if (!groups[dateStr]) {
+      groups[dateStr] = {
+        ...c,
+        saldo_efectivo_entregado: 0,
+        saldo_yape_entregado: 0,
+        movimientos: []
+      };
+    }
+    groups[dateStr].saldo_efectivo_entregado += c.saldo_efectivo_entregado;
+    groups[dateStr].saldo_yape_entregado += c.saldo_yape_entregado;
+    groups[dateStr].movimientos.push(...c.movimientos);
+  }
+
+  const result = Object.values(groups);
+  // Sort descending by date
+  result.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
+  return result;
 }
