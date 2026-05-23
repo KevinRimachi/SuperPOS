@@ -534,16 +534,16 @@ export async function getDashboardData() {
   const rendimientoCategorias = Object.entries(categorizacion)
     .map(([name, value]) => ({
       name,
-      value: value
+      value: Math.max(0, value)
     }))
     .sort((a, b) => b.value - a.value);
 
   return {
     chartSalesData,
     distribucionMetodos: [
-      { name: "Efectivo", value: totalEfectivoMes },
-      { name: "Yape", value: totalYapeMes },
-      { name: "Tareas Jefe", value: totalTareasJefeMes },
+      { name: "Efectivo", value: Math.max(0, totalEfectivoMes) },
+      { name: "Yape", value: Math.max(0, totalYapeMes) },
+      { name: "Tareas Jefe", value: Math.max(0, totalTareasJefeMes) },
     ],
     rendimientoCategorias,
     resumenMensual: {

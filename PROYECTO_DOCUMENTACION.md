@@ -12,7 +12,7 @@ El proyecto ha sido diseñado bajo los estándares modernos de **Next.js 16**, o
 - **Framework:** Next.js 16.2 (App Router con Server Components y Server Actions).
 - **Compilador/Empaquetador:** Turbopack (tiempos de desarrollo ultrarrápidos).
 - **Lenguaje:** TypeScript (Tipado estático seguro a nivel de frontend, backend y base de datos).
-- **Base de Datos:** SQLite (ligera, ideal para entornos locales y servidores POS).
+- **Base de Datos:** PostgreSQL (Neon Tech u otro proveedor) para alta disponibilidad y consistencia en la nube.
 - **ORM:** Prisma ORM (Migraciones automáticas, transacciones seguras y tipado estático autogenerado).
 - **Estilos:** Tailwind CSS con variables HSL personalizadas para soporte de Dark Mode/Light Mode.
 - **Gráficos & Métricas:** Recharts (paneles analíticos interactivos y fluidos).
@@ -88,43 +88,48 @@ Para prevenir pérdida de datos o facilitar migraciones:
 - El operador puede ingresar con su PIN (`1234`) y acceder a todas las funciones de venta (POS) y egresos rápidos.
 - Puede visualizar la pestaña **Dashboard** de forma exclusiva de lectura para conocer el estado y ventas del mes, pero no tiene acceso a configuraciones críticas, cierres antiguos del jefe ni liquidaciones de pago de comisiones mensuales.
 
+### **E. Cierres Retroactivos y Auto-Reparación de Base de Datos**
+- **Cierres Atrasados:** Si se olvida cerrar la caja de turnos anteriores, el sistema detecta de forma inteligente las "cajas huérfanas", bloquea el sistema POS del día actual y obliga a realizar el arqueo de los días pasados.
+- **Agrupamiento Inteligente (UTC):** Las fechas y movimientos de las cajas pasadas se consolidan visualmente utilizando formato UTC, evitando confusiones por cambios de zona horaria local.
+- **Limpieza de Duplicados (Self-Healing):** El sistema cuenta con mecanismos concurrentes robustos. Si el operador recarga múltiples veces el sistema, este es capaz de detectar cajas vacías generadas accidentalmente, conservar únicamente el registro principal de operaciones y eliminar la basura transaccional automáticamente al iniciar.
+
 ---
 
-## 🛠️ 4. GUÍA DE INSTALACIÓN Y DESPLIEGUE EN PRODUCCIÓN
+## 🛠️ 4. GUÍA DE INSTALACIÓN Y DESPLIEGUE EN PRODUCCIÓN (VERCEL & POSTGRESQL)
 
-### **Paso 1: Clonar e Instalar Dependencias**
-```bash
-# Instalar dependencias mediante pnpm
-pnpm install
-```
+### **Paso 1: Crear la Base de Datos (PostgreSQL)**
+1. Crea un proyecto gratuito en [Neon.tech](https://neon.tech/) o tu proveedor de PostgreSQL favorito.
+2. Copia la cadena de conexión (Connection String).
 
 ### **Paso 2: Configuración de Variables de Entorno (`.env`)**
-Crea un archivo `.env` en la raíz del proyecto con la siguiente configuración:
+Crea un archivo `.env` en la raíz de tu proyecto local con la URL de tu base de datos:
 ```env
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="postgresql://usuario:password@host/db?sslmode=require"
 ```
 
-### **Paso 3: Ejecutar Migraciones de Base de Datos**
-Prisma se encargará de crear la base de datos SQLite localmente con todos los índices requeridos:
+### **Paso 3: Migrar la Base de Datos**
+Sincroniza el esquema de Prisma con tu base de datos recién creada:
 ```bash
 npx prisma db push
 ```
 
-### **Paso 4: Compilación para Producción**
-Para garantizar que el empaquetado optimice todas las páginas estáticas y compruebe la seguridad de tipos, ejecuta:
+### **Paso 4: Subir el Código a GitHub**
 ```bash
-# Bypass de PowerShell en sistemas restringidos
-powershell -ExecutionPolicy Bypass -Command "pnpm run build"
-```
-*Si estás en Linux/macOS, puedes ejecutar simplemente:*
-```bash
-pnpm run build
+git add .
+git commit -m "Initial commit"
+git branch -M main
+git remote add origin https://github.com/TU_USUARIO/TU_REPOSITORIO.git
+git push -u origin main
 ```
 
-### **Paso 5: Levantar el Servidor POS**
-```bash
-pnpm run start
-```
+### **Paso 5: Despliegue en Vercel**
+1. Entra a [Vercel](https://vercel.com/) e inicia sesión con tu cuenta de GitHub.
+2. Haz clic en **Add New... > Project** e importa tu repositorio.
+3. En el apartado **Environment Variables**, añade la variable `DATABASE_URL` con tu cadena de conexión de Neon.
+4. En **Build Command**, puedes escribir el comando de Prisma: `prisma generate && next build`.
+5. Haz clic en **Deploy**. ¡Vercel compilará la aplicación y te dará tu enlace en producción en un par de minutos!
+
+*(Para uso local, puedes seguir usando `pnpm install` seguido de `pnpm run dev` o compilar con `pnpm run build` y correr con `pnpm run start`).*
 
 ---
 
