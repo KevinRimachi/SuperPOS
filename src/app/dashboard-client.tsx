@@ -2806,8 +2806,8 @@ export default function DashboardClient({
                       yape -= m.ingreso_yape;
                     }
                   });
-                  printExpectedEfectivo = Math.max(0, cash);
-                  printExpectedYape = Math.max(0, yape);
+                  printExpectedEfectivo = cash;
+                  printExpectedYape = yape;
                   printDeliveredEfectivo = selectedCierrePrint.saldo_efectivo_entregado;
                   printDeliveredYape = selectedCierrePrint.saldo_yape_entregado;
                   printMovimientosList = movs;

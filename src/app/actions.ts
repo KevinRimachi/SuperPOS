@@ -143,9 +143,9 @@ export async function getEstadoCaja() {
             fecha: firstCaja.fecha,
           },
           resumenActual: {
-            esperadoEfectivo: Math.max(0, totalEfectivo),
-            esperadoYape: Math.max(0, totalYape),
-            totalEsperado: Math.max(0, totalEfectivo) + Math.max(0, totalYape),
+            esperadoEfectivo: totalEfectivo,
+            esperadoYape: totalYape,
+            totalEsperado: totalEfectivo + totalYape,
             count: movimientos.length,
           },
           movimientos,
@@ -196,9 +196,9 @@ export async function getEstadoCaja() {
   return {
     cierre,
     resumenActual: {
-      esperadoEfectivo: Math.max(0, totalEfectivo),
-      esperadoYape: Math.max(0, totalYape),
-      totalEsperado: Math.max(0, totalEfectivo) + Math.max(0, totalYape),
+      esperadoEfectivo: totalEfectivo,
+      esperadoYape: totalYape,
+      totalEsperado: totalEfectivo + totalYape,
       count: movimientos.length,
     },
     hayCajaPendiente: false,
