@@ -143,9 +143,9 @@ export async function getEstadoCaja() {
             fecha: firstCaja.fecha,
           },
           resumenActual: {
-            esperadoEfectivo: Math.max(0, totalEfectivo),
-            esperadoYape: Math.max(0, totalYape),
-            totalEsperado: Math.max(0, totalEfectivo) + Math.max(0, totalYape),
+            esperadoEfectivo: totalEfectivo,
+            esperadoYape: totalYape,
+            totalEsperado: totalEfectivo + totalYape,
             count: movimientos.length,
           },
           movimientos,
@@ -196,9 +196,9 @@ export async function getEstadoCaja() {
   return {
     cierre,
     resumenActual: {
-      esperadoEfectivo: Math.max(0, totalEfectivo),
-      esperadoYape: Math.max(0, totalYape),
-      totalEsperado: Math.max(0, totalEfectivo) + Math.max(0, totalYape),
+      esperadoEfectivo: totalEfectivo,
+      esperadoYape: totalYape,
+      totalEsperado: totalEfectivo + totalYape,
       count: movimientos.length,
     },
     hayCajaPendiente: false,
@@ -534,16 +534,16 @@ export async function getDashboardData() {
   const rendimientoCategorias = Object.entries(categorizacion)
     .map(([name, value]) => ({
       name,
-      value: Math.max(0, value)
+      value: value
     }))
     .sort((a, b) => b.value - a.value);
 
   return {
     chartSalesData,
     distribucionMetodos: [
-      { name: "Efectivo", value: Math.max(0, totalEfectivoMes) },
-      { name: "Yape", value: Math.max(0, totalYapeMes) },
-      { name: "Tareas Jefe", value: Math.max(0, totalTareasJefeMes) },
+      { name: "Efectivo", value: totalEfectivoMes },
+      { name: "Yape", value: totalYapeMes },
+      { name: "Tareas Jefe", value: totalTareasJefeMes },
     ],
     rendimientoCategorias,
     resumenMensual: {
