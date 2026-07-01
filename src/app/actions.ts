@@ -469,9 +469,14 @@ export async function getDashboardData() {
     };
   });
 
-  // Calculate payment distributions overall (Yape vs Cash) for current month
+  // Calculate payment distributions overall (Yape vs Cash) for current month/period
   const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const ultimaLiquidacion = await prisma.liquidacionMensual.findFirst({
+    orderBy: {
+      fecha_creacion: "desc",
+    },
+  });
+  const startOfMonth = ultimaLiquidacion ? ultimaLiquidacion.fecha_creacion : new Date(now.getFullYear(), now.getMonth(), 1);
 
   const movimientosMes = await prisma.movimiento.findMany({
     where: {
@@ -564,24 +569,39 @@ export async function getLiquidaciones() {
     },
   });
 
-  // Calculate current month's live data
+  // Calculate current running period's live data
   const now = new Date();
-  const mesAnioActual = `${String(now.getMonth() + 1).padStart(2, "0")}-${now.getFullYear()}`;
-
-  const hasLiquidacionRegistrada = liquidaciones.some((l: any) => l.mes_anio === mesAnioActual);
+  let mesAnioActual = `${String(now.getMonth() + 1).padStart(2, "0")}-${now.getFullYear()}`;
+  
+  // If there are registered liquidaciones, the next period is always the month after the last one registered
+  if (liquidaciones.length > 0) {
+    const lastMesAnio = liquidaciones[0].mes_anio;
+    const [lastMesStr, lastAnioStr] = lastMesAnio.split("-");
+    let nextMes = parseInt(lastMesStr) + 1;
+    let nextAnio = parseInt(lastAnioStr);
+    if (nextMes > 12) {
+      nextMes = 1;
+      nextAnio += 1;
+    }
+    const nextMesAnioStr = `${String(nextMes).padStart(2, "0")}-${nextAnio}`;
+    
+    // We only use the "next" month if it's actually ahead of the current calendar month, 
+    // or if the current calendar month is already registered.
+    // Actually, simply advancing the month from the last registered one guarantees a continuous sequence.
+    mesAnioActual = nextMesAnioStr;
+  }
 
   let liquidacionActualCalculadaObj = null;
 
-  if (!hasLiquidacionRegistrada) {
-    const data = await getDashboardData();
-    liquidacionActualCalculadaObj = {
-      id: "actual-live",
-      mes_anio: mesAnioActual,
-      ingreso_bruto_total: data.resumenMensual.ingresoBruto,
-      pago_operador: data.resumenMensual.pagoOperador,
-      estado_pago: "Pendiente",
-    };
-  }
+  // We always have a pending current period (since the last closure)
+  const data = await getDashboardData();
+  liquidacionActualCalculadaObj = {
+    id: "actual-live",
+    mes_anio: mesAnioActual,
+    ingreso_bruto_total: data.resumenMensual.ingresoBruto,
+    pago_operador: data.resumenMensual.pagoOperador,
+    estado_pago: "Pendiente",
+  };
 
   return {
     registradas: liquidaciones,
