@@ -186,10 +186,12 @@ export function formatCurrency(value: number): string {
 export function formatLocalDate(date: Date | string): string {
   const dateObj = typeof date === "string" ? new Date(date) : date;
   return dateObj.toLocaleDateString("es-PE", {
+    timeZone: "UTC",
     year: "numeric",
     month: "long",
     day: "numeric"
   }) + " • " + dateObj.toLocaleTimeString("es-PE", {
+    timeZone: "UTC",
     hour: "2-digit",
     minute: "2-digit"
   });
@@ -659,6 +661,24 @@ export default function DashboardClient({
   const [showCashBreakdown, setShowCashBreakdown] = useState<boolean>(false);
   const [cashCount, setCashCount] = useState<Record<string, string>>({});
 
+  // Multiple Pending Cajas selector state
+  const [selectedPendingId, setSelectedPendingId] = useState<string>("");
+
+  useEffect(() => {
+    if (cajaState.hayCajaPendiente && cajaState.cajasPendientes?.length > 0) {
+      const exists = cajaState.cajasPendientes.some((cp: any) => cp.cierre.id === selectedPendingId);
+      if (!exists) {
+        setSelectedPendingId(cajaState.cajasPendientes[0].cierre.id);
+      }
+    } else {
+      setSelectedPendingId("");
+    }
+  }, [cajaState, selectedPendingId]);
+
+  const activePendingCaja = (cajaState.hayCajaPendiente && cajaState.cajasPendientes?.length > 0)
+    ? (cajaState.cajasPendientes.find((cp: any) => cp.cierre.id === selectedPendingId) || cajaState.cajasPendientes[0])
+    : null;
+
   const updateCashCount = (den: number, val: string) => {
     setCashCount(prev => ({
       ...prev,
@@ -686,9 +706,12 @@ export default function DashboardClient({
   const [prevExpectedYape, setPrevExpectedYape] = useState<number>(0);
 
   useEffect(() => {
-    if (cajaState.cierre.estado === "Abierto") {
-      const currentEspCash = cajaState.resumenActual.esperadoEfectivo;
-      const currentEspYape = cajaState.resumenActual.esperadoYape;
+    const targetCierre = activePendingCaja ? activePendingCaja.cierre : cajaState.cierre;
+    const targetResumen = activePendingCaja ? activePendingCaja.resumenActual : cajaState.resumenActual;
+
+    if (targetCierre.estado === "Abierto") {
+      const currentEspCash = targetResumen.esperadoEfectivo;
+      const currentEspYape = targetResumen.esperadoYape;
       
       const numCash = parseFloat(deliveredCash);
       const numYape = parseFloat(deliveredYape);
@@ -715,7 +738,16 @@ export default function DashboardClient({
       setDeliveredCash("");
       setDeliveredYape("");
     }
-  }, [cajaState.resumenActual.esperadoEfectivo, cajaState.resumenActual.esperadoYape, cajaState.cierre.estado]);
+  }, [
+    cajaState.resumenActual.esperadoEfectivo,
+    cajaState.resumenActual.esperadoYape,
+    cajaState.cierre.estado,
+    activePendingCaja,
+    deliveredCash,
+    deliveredYape,
+    prevExpectedEfectivo,
+    prevExpectedYape
+  ]);
 
   const handleEgresoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -787,7 +819,8 @@ export default function DashboardClient({
       try {
         await cerrarCajaDiaria({
           saldo_efectivo_entregado: dCash,
-          saldo_yape_entregado: dYape
+          saldo_yape_entregado: dYape,
+          id_cierre: activePendingCaja ? activePendingCaja.cierre.id : undefined
         });
         showNotification("success", "Caja cerrada y entregada con éxito. Turno bloqueado.");
         setDeliveredCash("");
@@ -1683,11 +1716,11 @@ export default function DashboardClient({
                 {/* 1 */}
                 <div className="bg-slate-900/40 backdrop-blur-md p-6 rounded-2xl border border-slate-800 flex items-center justify-between">
                   <div className="space-y-2">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ingreso Bruto Mensual</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ingreso Neto Mensual</p>
                     <p className="text-3xl font-black text-slate-100">
                       S/. {dashboardState.resumenMensual.ingresoBruto.toFixed(2)}
                     </p>
-                    <p className="text-[10px] text-slate-500 font-semibold">Consolidado ventas + cotizaciones</p>
+                    <p className="text-[10px] text-slate-500 font-semibold">Movimientos netos del mes calendario</p>
                   </div>
                   <div className="h-12 w-12 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-400">
                     <TrendingUp className="h-6 w-6" />
@@ -1812,7 +1845,7 @@ export default function DashboardClient({
                     )}
                     {/* Centered balance summary */}
                     <div className="absolute flex flex-col items-center justify-center">
-                      <span className="text-[10px] text-slate-500 uppercase font-black">Bruto</span>
+                      <span className="text-[10px] text-slate-500 uppercase font-black">Neto</span>
                       <span className="text-md font-extrabold text-slate-200">
                         S/. {dashboardState.resumenMensual.ingresoBruto.toFixed(0)}
                       </span>
@@ -2548,7 +2581,7 @@ export default function DashboardClient({
                   </div>
 
                   <p className="text-xs text-slate-400 leading-relaxed">
-                    A continuación se consolidan los ingresos acumulados en el mes actual. La comisión equivale exactamente al <strong>50% del total</strong> de ingresos brutos. Al presionar "Marcar Mes como Pagado", se congelará y archivará en el historial.
+                    A continuación se consolidan los ingresos netos acumulados en el mes calendario actual. La comisión equivale exactamente al <strong>50% del total neto</strong>. Al presionar "Marcar Mes como Pagado", se congelará y archivará en el historial.
                   </p>
 
                   {liquidaciones.actualEstimada ? (
@@ -2557,19 +2590,19 @@ export default function DashboardClient({
                       {/* Breakdown lists */}
                       <div className="bg-slate-950 p-4 rounded-xl border border-slate-850 space-y-3">
                         <div className="flex justify-between items-center text-xs font-semibold text-slate-400">
-                          <span>Ventas Netas (Efectivo + Yape):</span>
+                          <span>Ingresos Netos (Efectivo + Yape):</span>
                           <span className="text-slate-200">
                             S/. {(dashboardState.resumenMensual.totalEfectivo + dashboardState.resumenMensual.totalYape).toFixed(2)}
                           </span>
                         </div>
                         <div className="flex justify-between items-center text-xs font-semibold text-slate-400">
-                          <span>Tareas del Jefe Cotizadas:</span>
+                          <span>Tareas del Jefe (ya incluidas arriba):</span>
                           <span className="text-slate-200">
                             S/. {dashboardState.resumenMensual.totalTareas.toFixed(2)}
                           </span>
                         </div>
                         <div className="border-t border-slate-850 my-1 pt-2 flex justify-between items-center text-xs font-bold text-slate-300">
-                          <span>Ingreso Bruto Total:</span>
+                          <span>Ingreso Neto Total:</span>
                           <span>S/. {liquidaciones.actualEstimada.ingreso_bruto_total.toFixed(2)}</span>
                         </div>
                       </div>
@@ -2773,8 +2806,8 @@ export default function DashboardClient({
                       yape -= m.ingreso_yape;
                     }
                   });
-                  printExpectedEfectivo = Math.max(0, cash);
-                  printExpectedYape = Math.max(0, yape);
+                  printExpectedEfectivo = cash;
+                  printExpectedYape = yape;
                   printDeliveredEfectivo = selectedCierrePrint.saldo_efectivo_entregado;
                   printDeliveredYape = selectedCierrePrint.saldo_yape_entregado;
                   printMovimientosList = movs;
@@ -2940,7 +2973,7 @@ export default function DashboardClient({
                 <thead>
                   <tr className="bg-gray-100 border-b border-gray-300 font-bold">
                     <th className="p-3">Descripción del Concepto</th>
-                    <th className="p-3 text-right">Monto Bruto</th>
+                    <th className="p-3 text-right">Monto del periodo</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2955,15 +2988,15 @@ export default function DashboardClient({
                   </tr>
                   <tr className="border-b border-gray-200">
                     <td className="p-3">
-                      <strong>Trabajos Especiales del Jefe</strong>
-                      <p className="text-[10px] text-gray-500 font-normal">Proyectos cotizados por el jefe de forma directa acumulados e inyectados al mes</p>
+                      <strong>Trabajos Especiales del Jefe (incluidos)</strong>
+                      <p className="text-[10px] text-gray-500 font-normal">Desglose informativo; estos importes ya forman parte de Efectivo o Yape y no se vuelven a sumar</p>
                     </td>
                     <td className="p-3 text-right font-semibold">
                       S/. {(selectedLiquidacionPrint.tareas || 0).toFixed(2)}
                     </td>
                   </tr>
                   <tr className="bg-gray-50 font-bold border-t border-gray-300">
-                    <td className="p-3 uppercase">Total Ingreso Bruto Acumulado</td>
+                    <td className="p-3 uppercase">Total Ingreso Neto Acumulado</td>
                     <td className="p-3 text-right text-sm">
                       S/. {selectedLiquidacionPrint.ingreso_bruto_total.toFixed(2)}
                     </td>
@@ -3205,6 +3238,237 @@ export default function DashboardClient({
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ----------------------------------------------------
+          OBLIGATORY RETROACTIVE CASH CLOSER MODAL/OVERLAY (OPTION A)
+         ---------------------------------------------------- */}
+      {!isLocked && cajaState.hayCajaPendiente && (
+        <div className="fixed inset-0 z-[90] bg-slate-950/80 backdrop-blur-md flex justify-center items-center p-4">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl relative space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            {/* Modal header */}
+            <div className="text-center space-y-2">
+              <div className="inline-flex h-12 w-12 bg-amber-500/10 text-amber-450 rounded-xl items-center justify-center mb-2 animate-pulse">
+                <AlertTriangle className="h-6 w-6 text-amber-500" />
+              </div>
+              <h2 className="text-xl font-black text-amber-400 tracking-wide uppercase">
+                Cierre Retroactivo Obligatorio
+              </h2>
+              <p className="text-xs text-slate-400 leading-relaxed font-semibold">
+                La caja del día <strong className="text-slate-205">{formatLocalDate(activePendingCaja?.cierre.fecha || cajaState.cierre.fecha)}</strong> no se cerró. Para registrar nuevas ventas hoy, primero debes realizar el arqueo y cierre diario de este turno anterior.
+              </p>
+            </div>
+
+            {/* Selector de Cajas Pendientes (en caso haya múltiples) */}
+            {cajaState.cajasPendientes && cajaState.cajasPendientes.length > 1 && (
+              <div className="space-y-1.5 bg-amber-500/5 p-3 rounded-xl border border-amber-500/10">
+                <label className="block text-[9px] font-black text-amber-500 uppercase tracking-wider">
+                  ⚠️ Hay múltiples cajas anteriores abiertas. Selecciona cuál cerrar:
+                </label>
+                <select
+                  value={selectedPendingId}
+                  onChange={(e) => setSelectedPendingId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-850 focus:border-amber-500 rounded-lg py-2 px-3 text-slate-200 text-xs font-bold focus:outline-none"
+                >
+                  {cajaState.cajasPendientes.map((cp: any) => (
+                    <option key={cp.cierre.id} value={cp.cierre.id}>
+                      Fecha: {formatLocalDate(cp.cierre.fecha).split(" • ")[0]} ({cp.resumenActual.count} movs)
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Resumen e Ingresos/Movimientos */}
+            <div className="bg-slate-950 p-4 rounded-xl border border-slate-850 space-y-4">
+              <div className="space-y-1">
+                <span className="text-[10px] text-slate-500 uppercase font-black block text-center">Resumen Financiero del Turno</span>
+                <div className="grid grid-cols-2 gap-4 text-center">
+                  <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+                    <p className="text-[9px] text-slate-550 font-bold uppercase">Efectivo Esperado</p>
+                    <p className="text-base font-black text-slate-200">
+                      {formatCurrency(activePendingCaja ? activePendingCaja.resumenActual.esperadoEfectivo : cajaState.resumenActual.esperadoEfectivo)}
+                    </p>
+                  </div>
+                  <div className="bg-slate-900/60 p-2 rounded-lg border border-slate-800">
+                    <p className="text-[9px] text-slate-550 font-bold uppercase">Yape Esperado</p>
+                    <p className="text-base font-black text-slate-200">
+                      {formatCurrency(activePendingCaja ? activePendingCaja.resumenActual.esperadoYape : cajaState.resumenActual.esperadoYape)}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-center pt-2 border-t border-slate-900 flex justify-between items-center px-2">
+                  <span className="text-[9px] text-slate-500 font-bold uppercase">Total Esperado en Caja:</span>
+                  <span className="text-xs font-black text-purple-400">
+                    {formatCurrency(activePendingCaja ? activePendingCaja.resumenActual.totalEsperado : cajaState.resumenActual.totalEsperado)}
+                  </span>
+                </div>
+              </div>
+
+              {/* List of movements in the pending box */}
+              <div className="border-t border-slate-900 pt-3 space-y-2">
+                <span className="text-[10px] text-slate-500 uppercase font-black block text-center">Ingresos y Egresos del Turno</span>
+                {(activePendingCaja ? activePendingCaja.movimientos : cajaState.movimientosCajaPendiente) && (activePendingCaja ? activePendingCaja.movimientos : cajaState.movimientosCajaPendiente).length > 0 ? (
+                  <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1.5 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-transparent">
+                    {(activePendingCaja ? activePendingCaja.movimientos : cajaState.movimientosCajaPendiente).map((m: any) => (
+                      <div key={m.id} className="flex justify-between items-center bg-slate-900/40 p-2 rounded-lg border border-slate-850 text-[11px]">
+                        <div className="text-left">
+                          <p className="font-bold text-slate-300 truncate max-w-[180px]">{m.categoria}</p>
+                          <p className="text-[9px] text-slate-550 font-semibold">{new Date(m.fecha).toLocaleTimeString("es-PE", { timeZone: 'UTC', hour: '2-digit', minute: '2-digit' })}</p>
+                        </div>
+                        <div className="text-right">
+                          <span className={`font-extrabold ${m.tipo === "Ingreso" ? "text-emerald-400" : "text-rose-450"}`}>
+                            {m.tipo === "Ingreso" ? "+" : "-"} S/. {m.monto_total.toFixed(2)}
+                          </span>
+                          <p className="text-[8px] text-slate-550 font-bold">
+                            {m.ingreso_efectivo > 0 && "Efectivo"} {m.ingreso_yape > 0 && "Yape"}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-slate-500 text-center py-4 font-semibold">No se registraron movimientos en este turno.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Formulario de Arqueo */}
+            <form onSubmit={handleCierreSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Efectivo Entregado (S/.)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={deliveredCash}
+                    onChange={(e) => setDeliveredCash(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-2.5 px-4 text-slate-100 font-bold focus:outline-none text-sm transition"
+                    required
+                  />
+                  
+                  {/* Desglose tool trigger inside modal */}
+                  <div className="mt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowCashBreakdown(!showCashBreakdown)}
+                      className="w-full py-1.5 px-3 bg-slate-950/60 hover:bg-slate-900 border border-slate-850 hover:border-slate-750 text-slate-400 text-[10px] font-bold rounded-lg transition flex items-center justify-between"
+                    >
+                      <span>🧮 Calculadora de Efectivo</span>
+                      <span className="text-[9px] text-amber-500 font-black">
+                        {showCashBreakdown ? "Ocultar" : "Mostrar"}
+                      </span>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    Yape Entregado (S/.)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={deliveredYape}
+                    onChange={(e) => setDeliveredYape(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500 rounded-xl py-2.5 px-4 text-slate-100 font-bold focus:outline-none text-sm transition"
+                    required
+                  />
+                </div>
+              </div>
+
+              {/* Breakdown Calculator Panel inside Modal */}
+              {showCashBreakdown && (
+                <div className="p-4 bg-slate-950 border border-slate-850 rounded-xl space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="border-b border-slate-900 pb-1.5 text-center">
+                    <h4 className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Conteo de Billetes y Monedas</h4>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3 max-h-40 overflow-y-auto pr-1">
+                    {/* Bills */}
+                    <div className="space-y-2">
+                      <p className="text-[8px] font-bold text-slate-500 uppercase tracking-wide text-center">Billetes (S/.)</p>
+                      {[200, 100, 50, 20, 10].map((den) => (
+                        <div key={den} className="flex items-center justify-between gap-1">
+                          <span className="text-[9px] font-bold text-slate-450 w-12">S/. {den}</span>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={cashCount[den.toString()] || ""}
+                            onChange={(e) => updateCashCount(den, e.target.value)}
+                            className="w-12 bg-slate-900 border border-slate-800 rounded py-1 px-1.5 text-slate-200 text-center text-xs font-bold focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    {/* Coins */}
+                    <div className="space-y-2">
+                      <p className="text-[8px] font-bold text-slate-500 uppercase tracking-wide text-center">Monedas (S/.)</p>
+                      {[5, 2, 1, 0.50, 0.20, 0.10].map((den) => (
+                        <div key={den} className="flex items-center justify-between gap-1">
+                          <span className="text-[9px] font-bold text-slate-450 w-12">S/. {den.toFixed(2)}</span>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={cashCount[den.toString()] || ""}
+                            onChange={(e) => updateCashCount(den, e.target.value)}
+                            className="w-12 bg-slate-900 border border-slate-800 rounded py-1 px-1.5 text-slate-200 text-center text-xs font-bold focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  {/* Total calculated & use button */}
+                  <div className="border-t border-slate-900 pt-2.5 flex items-center justify-between gap-2">
+                    <div className="text-left">
+                      <span className="text-[8px] text-slate-550 font-bold block uppercase">Total Conteo:</span>
+                      <strong className="text-xs font-black text-emerald-400">S/. {calculatedCashTotal.toFixed(2)}</strong>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={resetCashCount}
+                        className="px-2 py-1 bg-slate-900 hover:bg-slate-800 text-[9px] font-bold text-slate-400 rounded transition"
+                      >
+                        Limpiar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeliveredCash(calculatedCashTotal.toFixed(2));
+                          showNotification("success", `Efectivo de Cierre actualizado a S/. ${calculatedCashTotal.toFixed(2)}`);
+                        }}
+                        className="px-2 py-1 bg-amber-600 hover:bg-amber-500 text-[9px] font-black text-slate-950 rounded transition"
+                      >
+                        Usar Total
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Nota info */}
+              <p className="text-[10px] text-slate-500 text-center leading-relaxed">
+                Ingresa el dinero físico entregado. Al guardar, esta caja se cerrará con estado &quot;Entregado&quot; y se habilitará automáticamente la caja de hoy.
+              </p>
+
+              <button
+                type="submit"
+                disabled={isPending}
+                className="w-full py-3 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-450 text-slate-950 font-black rounded-xl text-xs shadow-lg shadow-amber-500/10 transition active:scale-[0.98] disabled:opacity-50 tracking-wider uppercase"
+              >
+                {isPending ? "Procesando Cierre..." : "Confirmar Arqueo y Cerrar Caja"}
+              </button>
+            </form>
           </div>
         </div>
       )}
