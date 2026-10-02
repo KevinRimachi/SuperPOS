@@ -1716,11 +1716,11 @@ export default function DashboardClient({
                 {/* 1 */}
                 <div className="bg-slate-900/40 backdrop-blur-md p-6 rounded-2xl border border-slate-800 flex items-center justify-between">
                   <div className="space-y-2">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ingreso Bruto Mensual</p>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Ingreso Neto Mensual</p>
                     <p className="text-3xl font-black text-slate-100">
                       S/. {dashboardState.resumenMensual.ingresoBruto.toFixed(2)}
                     </p>
-                    <p className="text-[10px] text-slate-500 font-semibold">Consolidado ventas + cotizaciones</p>
+                    <p className="text-[10px] text-slate-500 font-semibold">Movimientos netos del mes calendario</p>
                   </div>
                   <div className="h-12 w-12 bg-purple-500/10 rounded-xl flex items-center justify-center text-purple-400">
                     <TrendingUp className="h-6 w-6" />
@@ -1845,7 +1845,7 @@ export default function DashboardClient({
                     )}
                     {/* Centered balance summary */}
                     <div className="absolute flex flex-col items-center justify-center">
-                      <span className="text-[10px] text-slate-500 uppercase font-black">Bruto</span>
+                      <span className="text-[10px] text-slate-500 uppercase font-black">Neto</span>
                       <span className="text-md font-extrabold text-slate-200">
                         S/. {dashboardState.resumenMensual.ingresoBruto.toFixed(0)}
                       </span>
@@ -2581,7 +2581,7 @@ export default function DashboardClient({
                   </div>
 
                   <p className="text-xs text-slate-400 leading-relaxed">
-                    A continuación se consolidan los ingresos acumulados en el mes actual. La comisión equivale exactamente al <strong>50% del total</strong> de ingresos brutos. Al presionar "Marcar Mes como Pagado", se congelará y archivará en el historial.
+                    A continuación se consolidan los ingresos netos acumulados en el mes calendario actual. La comisión equivale exactamente al <strong>50% del total neto</strong>. Al presionar "Marcar Mes como Pagado", se congelará y archivará en el historial.
                   </p>
 
                   {liquidaciones.actualEstimada ? (
@@ -2590,19 +2590,19 @@ export default function DashboardClient({
                       {/* Breakdown lists */}
                       <div className="bg-slate-950 p-4 rounded-xl border border-slate-850 space-y-3">
                         <div className="flex justify-between items-center text-xs font-semibold text-slate-400">
-                          <span>Ventas Netas (Efectivo + Yape):</span>
+                          <span>Ingresos Netos (Efectivo + Yape):</span>
                           <span className="text-slate-200">
                             S/. {(dashboardState.resumenMensual.totalEfectivo + dashboardState.resumenMensual.totalYape).toFixed(2)}
                           </span>
                         </div>
                         <div className="flex justify-between items-center text-xs font-semibold text-slate-400">
-                          <span>Tareas del Jefe Cotizadas:</span>
+                          <span>Tareas del Jefe (ya incluidas arriba):</span>
                           <span className="text-slate-200">
                             S/. {dashboardState.resumenMensual.totalTareas.toFixed(2)}
                           </span>
                         </div>
                         <div className="border-t border-slate-850 my-1 pt-2 flex justify-between items-center text-xs font-bold text-slate-300">
-                          <span>Ingreso Bruto Total:</span>
+                          <span>Ingreso Neto Total:</span>
                           <span>S/. {liquidaciones.actualEstimada.ingreso_bruto_total.toFixed(2)}</span>
                         </div>
                       </div>
@@ -2973,7 +2973,7 @@ export default function DashboardClient({
                 <thead>
                   <tr className="bg-gray-100 border-b border-gray-300 font-bold">
                     <th className="p-3">Descripción del Concepto</th>
-                    <th className="p-3 text-right">Monto Bruto</th>
+                    <th className="p-3 text-right">Monto del periodo</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2988,15 +2988,15 @@ export default function DashboardClient({
                   </tr>
                   <tr className="border-b border-gray-200">
                     <td className="p-3">
-                      <strong>Trabajos Especiales del Jefe</strong>
-                      <p className="text-[10px] text-gray-500 font-normal">Proyectos cotizados por el jefe de forma directa acumulados e inyectados al mes</p>
+                      <strong>Trabajos Especiales del Jefe (incluidos)</strong>
+                      <p className="text-[10px] text-gray-500 font-normal">Desglose informativo; estos importes ya forman parte de Efectivo o Yape y no se vuelven a sumar</p>
                     </td>
                     <td className="p-3 text-right font-semibold">
                       S/. {(selectedLiquidacionPrint.tareas || 0).toFixed(2)}
                     </td>
                   </tr>
                   <tr className="bg-gray-50 font-bold border-t border-gray-300">
-                    <td className="p-3 uppercase">Total Ingreso Bruto Acumulado</td>
+                    <td className="p-3 uppercase">Total Ingreso Neto Acumulado</td>
                     <td className="p-3 text-right text-sm">
                       S/. {selectedLiquidacionPrint.ingreso_bruto_total.toFixed(2)}
                     </td>
